@@ -4,24 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CSV to Checklist</title>
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .block {
+            margin-bottom: 10px;
+        }
+    </style>
 </head>
 <body>
-    <div>
-        <textarea id="csvTextInput" placeholder="CSVデータをここに貼り付けてください"></textarea>
+    <div class="container">
+        <div class="block">
+            <textarea id="csvTextInput" placeholder="CSVデータをここに貼り付けてください"></textarea>
+        </div>
+        <div class="block">
+            <input type="text" id="saveNameInput" placeholder="save1">
+        </div>
+        <div class="block">
+            <button id="saveCSVButton">別名で保存</button>
+            <button id="overwriteCSVButton">上書き保存</button>
+            <button id="deleteCSVButton">現在のチェックリストを削除する</button>
+        </div>
+        <div class="block">
+            <select id="loadSavedDataSelect">
+                <option value="">セーブデータを選択</option>
+            </select>
+        </div>
+        <div class="block" id="checklist"></div>
     </div>
-    <div>
-        <input type="text" id="saveNameInput" placeholder="save1">
-        <button id="saveCSVButton">保存</button>
-    </div>
-    <div>
-        <select id="loadSavedDataSelect">
-            <option value="">セーブデータを選択</option>
-        </select>
-    </div>
-    <div id="checklist"></div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', init);
+
+        function init() {
             populateSavedDataList();
             const lastSelectedSave = localStorage.getItem('lastSelectedSave');
             if (lastSelectedSave) {
@@ -30,65 +48,99 @@
             } else {
                 updateSaveNamePlaceholder();
             }
-        });
 
-        document.getElementById('csvTextInput').addEventListener('input', () => {
+            document.getElementById('csvTextInput').addEventListener('input', handleCSVInput);
+            document.getElementById('saveCSVButton').addEventListener('click', saveAsNewData);
+            document.getElementById('overwriteCSVButton').addEventListener('click', overwriteData);
+            document.getElementById('deleteCSVButton').addEventListener('click', deleteCurrentData);
+            document.getElementById('loadSavedDataSelect').addEventListener('change', handleDataSelect);
+            document.getElementById('saveNameInput').addEventListener('blur', validateSaveName);
+        }
+
+        function handleCSVInput() {
             const csvText = document.getElementById('csvTextInput').value;
             const data = parseCSV(csvText);
-            localStorage.setItem('currentChecklistData', JSON.stringify(data));
             displayChecklist(data);
-        });
+        }
 
-        document.getElementById('saveCSVButton').addEventListener('click', () => {
-            saveCurrentData();
-        });
+        function saveAsNewData() {
+            const saveNameInput = document.getElementById('saveNameInput');
+            let saveName = saveNameInput.value.trim();
+            if (!saveName || isDuplicateSaveName(saveName)) {
+                alert('セーブデータ名が無効です。既に存在するセーブデータ名とは重複できません。');
+                return;
+            }
 
-        document.getElementById('loadSavedDataSelect').addEventListener('change', () => {
+            const data = JSON.parse(localStorage.getItem('currentChecklistData')) || parseCSV(document.getElementById('csvTextInput').value);
+            const state = JSON.parse(localStorage.getItem('checklistState')) || {};
+            const saveData = { name: saveName, data: data, state: state };
+            const saveIndex = getSavedDataCount() + 1;
+
+            localStorage.setItem(`checklistData_${saveIndex}`, JSON.stringify(saveData));
+            localStorage.setItem('currentChecklistData', JSON.stringify(data));
+            localStorage.setItem('lastSelectedSave', saveIndex);
+            populateSavedDataList();
+            document.getElementById('loadSavedDataSelect').value = saveIndex;
+        }
+
+        function overwriteData() {
+            const saveIndex = document.getElementById('loadSavedDataSelect').value;
+            if (!saveIndex) {
+                alert("上書き保存するセーブデータを選択してください。");
+                return;
+            }
+
+            const saveNameInput = document.getElementById('saveNameInput');
+            const saveName = saveNameInput.value.trim();
+            const data = JSON.parse(localStorage.getItem('currentChecklistData')) || parseCSV(document.getElementById('csvTextInput').value);
+            const state = JSON.parse(localStorage.getItem('checklistState')) || {};
+            const saveData = { name: saveName, data: data, state: state };
+
+            localStorage.setItem(`checklistData_${saveIndex}`, JSON.stringify(saveData));
+            localStorage.setItem('currentChecklistData', JSON.stringify(data));
+            populateSavedDataList();
+            document.getElementById('loadSavedDataSelect').value = saveIndex;
+        }
+
+        function deleteCurrentData() {
+            const saveIndex = document.getElementById('loadSavedDataSelect').value;
+            if (!saveIndex) {
+                alert("削除するセーブデータを選択してください。");
+                return;
+            }
+
+            localStorage.removeItem(`checklistData_${saveIndex}`);
+            localStorage.removeItem('currentChecklistData');
+            localStorage.removeItem('checklistState');
+            localStorage.removeItem('lastSelectedSave');
+            document.getElementById('loadSavedDataSelect').value = '';
+            document.getElementById('saveNameInput').value = '';
+            document.getElementById('csvTextInput').value = '';
+            displayChecklist([]);
+            populateSavedDataList();
+        }
+
+        function handleDataSelect() {
             const select = document.getElementById('loadSavedDataSelect');
             const selectedSave = select.value;
             if (selectedSave) {
                 localStorage.setItem('lastSelectedSave', selectedSave);
                 loadSavedData(selectedSave);
             }
-        });
+        }
 
-        document.getElementById('saveNameInput').addEventListener('blur', () => {
-            const saveIndex = document.getElementById('loadSavedDataSelect').value;
-            if (saveIndex) {
-                const saveName = document.getElementById('saveNameInput').value.trim();
-                const saved = JSON.parse(localStorage.getItem(`checklistData_${saveIndex}`));
-                saved.name = saveName;
-                localStorage.setItem(`checklistData_${saveIndex}`, JSON.stringify(saved));
-                populateSavedDataList();
-            }
-        });
-
-        function saveCurrentData() {
+        function validateSaveName() {
             const saveNameInput = document.getElementById('saveNameInput');
-            let saveName = saveNameInput.value.trim();
-            const data = JSON.parse(localStorage.getItem('currentChecklistData'));
-            const state = JSON.parse(localStorage.getItem('checklistState')) || {};
-
-            if (!saveName) {
-                const savedDataCount = Object.keys(localStorage).filter(key => key.startsWith('checklistData_')).length;
-                saveName = `save${savedDataCount + 1}`;
-                saveNameInput.placeholder = saveName;
+            const saveName = saveNameInput.value.trim();
+            if (isDuplicateSaveName(saveName)) {
+                alert('セーブデータ名が既に存在します。別の名前を入力してください。');
+                saveNameInput.value = '';
             }
+        }
 
-            const saveData = {
-                name: saveName,
-                data: data,
-                state: state
-            };
-
-            let saveIndex = document.getElementById('loadSavedDataSelect').value;
-            if (!saveIndex) {
-                saveIndex = Object.keys(localStorage).filter(key => key.startsWith('checklistData_')).length + 1;
-                document.getElementById('loadSavedDataSelect').value = saveIndex;
-            }
-
-            localStorage.setItem(`checklistData_${saveIndex}`, JSON.stringify(saveData));
-            populateSavedDataList();
+        function isDuplicateSaveName(saveName) {
+            const select = document.getElementById('loadSavedDataSelect');
+            return Array.from(select.options).some(option => option.text === saveName);
         }
 
         function loadSavedData(selectedSave) {
@@ -108,15 +160,13 @@
             const nameIndex = headers.indexOf('name');
 
             for (let i = 1; i < lines.length; i++) {
-                if (lines[i].trim() === '') continue; // 空行をスキップ
-                const obj = {};
+                if (lines[i].trim() === '') continue;
                 const currentline = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(value => value.trim().replace(/^"|"$/g, ''));
-
-                obj.id = currentline[idIndex];
-                obj.name = currentline[nameIndex];
+                const obj = { id: currentline[idIndex], name: currentline[nameIndex] };
                 result.push(obj);
             }
 
+            localStorage.setItem('currentChecklistData', JSON.stringify(result));
             return result;
         }
 
@@ -139,13 +189,22 @@
                 checkbox.addEventListener('change', () => {
                     storedState[item.id] = checkbox.checked;
                     localStorage.setItem('checklistState', JSON.stringify(storedState));
-                    saveCurrentData(); // リアルタイムでチェック状態を保存
+                    saveCurrentState(storedState);
                 });
 
                 div.appendChild(checkbox);
                 div.appendChild(label);
                 checklist.appendChild(div);
             });
+        }
+
+        function saveCurrentState(state) {
+            const saveIndex = document.getElementById('loadSavedDataSelect').value;
+            if (saveIndex) {
+                const saved = JSON.parse(localStorage.getItem(`checklistData_${saveIndex}`));
+                saved.state = state;
+                localStorage.setItem(`checklistData_${saveIndex}`, JSON.stringify(saved));
+            }
         }
 
         function populateSavedDataList() {
@@ -167,8 +226,12 @@
 
         function updateSaveNamePlaceholder() {
             const saveNameInput = document.getElementById('saveNameInput');
-            const savedDataCount = Object.keys(localStorage).filter(key => key.startsWith('checklistData_')).length;
+            const savedDataCount = getSavedDataCount();
             saveNameInput.placeholder = `save${savedDataCount + 1}`;
+        }
+
+        function getSavedDataCount() {
+            return Object.keys(localStorage).filter(key => key.startsWith('checklistData_')).length;
         }
     </script>
 </body>
