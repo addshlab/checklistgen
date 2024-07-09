@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CSV to Checklist</title>
+    <title>Text to Checklist</title>
     <style>
         .container {
             max-width: 1200px;
@@ -19,15 +19,15 @@
 <body>
     <div class="container">
         <div class="block">
-            <textarea id="csvTextInput" placeholder="CSVデータをここに貼り付けてください"></textarea>
+            <textarea id="textInput" placeholder="改行区切りのリストをここに貼り付けてください"></textarea>
         </div>
         <div class="block">
             <input type="text" id="saveNameInput" placeholder="save1">
         </div>
         <div class="block">
-            <button id="saveCSVButton">別名で保存</button>
-            <button id="overwriteCSVButton">上書き保存</button>
-            <button id="deleteCSVButton">現在のチェックリストを削除する</button>
+            <button id="saveButton">別名で保存</button>
+            <button id="overwriteButton">上書き保存</button>
+            <button id="deleteButton">現在のチェックリストを削除する</button>
         </div>
         <div class="block">
             <select id="loadSavedDataSelect">
@@ -50,17 +50,17 @@
                 updateSaveNamePlaceholder();
             }
 
-            document.getElementById('csvTextInput').addEventListener('input', handleCSVInput);
-            document.getElementById('saveCSVButton').addEventListener('click', saveAsNewData);
-            document.getElementById('overwriteCSVButton').addEventListener('click', overwriteData);
-            document.getElementById('deleteCSVButton').addEventListener('click', deleteCurrentData);
+            document.getElementById('textInput').addEventListener('input', handleTextInput);
+            document.getElementById('saveButton').addEventListener('click', saveAsNewData);
+            document.getElementById('overwriteButton').addEventListener('click', overwriteData);
+            document.getElementById('deleteButton').addEventListener('click', deleteCurrentData);
             document.getElementById('loadSavedDataSelect').addEventListener('change', handleDataSelect);
             document.getElementById('saveNameInput').addEventListener('blur', validateSaveName);
         }
 
-        function handleCSVInput() {
-            const csvText = document.getElementById('csvTextInput').value;
-            const data = parseCSV(csvText);
+        function handleTextInput() {
+            const text = document.getElementById('textInput').value;
+            const data = parseText(text);
             displayChecklist(data);
         }
 
@@ -72,7 +72,7 @@
                 return;
             }
 
-            const data = JSON.parse(localStorage.getItem('currentChecklistData')) || parseCSV(document.getElementById('csvTextInput').value);
+            const data = JSON.parse(localStorage.getItem('currentChecklistData')) || parseText(document.getElementById('textInput').value);
             const state = JSON.parse(localStorage.getItem('checklistState')) || {};
             const saveData = { name: saveName, data: data, state: state };
             const saveIndex = getSavedDataCount() + 1;
@@ -93,7 +93,7 @@
 
             const saveNameInput = document.getElementById('saveNameInput');
             const saveName = saveNameInput.value.trim();
-            const data = JSON.parse(localStorage.getItem('currentChecklistData')) || parseCSV(document.getElementById('csvTextInput').value);
+            const data = JSON.parse(localStorage.getItem('currentChecklistData')) || parseText(document.getElementById('textInput').value);
             const state = JSON.parse(localStorage.getItem('checklistState')) || {};
             const saveData = { name: saveName, data: data, state: state };
 
@@ -116,7 +116,7 @@
             localStorage.removeItem('lastSelectedSave');
             document.getElementById('loadSavedDataSelect').value = '';
             document.getElementById('saveNameInput').value = '';
-            document.getElementById('csvTextInput').value = '';
+            document.getElementById('textInput').value = '';
             displayChecklist([]);
             populateSavedDataList();
         }
@@ -152,21 +152,9 @@
             displayChecklist(saved.data, saved.state);
         }
 
-        function parseCSV(data) {
-            const lines = data.split('\n');
-            const result = [];
-            const headers = lines[0].split(',').map(header => header.trim().replace(/^"|"$/g, ''));
-
-            const idIndex = headers.indexOf('id');
-            const nameIndex = headers.indexOf('name');
-
-            for (let i = 1; i < lines.length; i++) {
-                if (lines[i].trim() === '') continue;
-                const currentline = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(value => value.trim().replace(/^"|"$/g, ''));
-                const obj = { id: currentline[idIndex], name: currentline[nameIndex] };
-                result.push(obj);
-            }
-
+        function parseText(data) {
+            const lines = data.split('\n').map(line => line.trim()).filter(line => line);
+            const result = lines.map((line, index) => ({ id: index.toString(), name: line }));
             localStorage.setItem('currentChecklistData', JSON.stringify(result));
             return result;
         }
